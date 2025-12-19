@@ -17,16 +17,16 @@ export function activate(context: vscode.ExtensionContext) {
 	}));
 
 	context.subscriptions.push(
-    vscode.lm.registerTool('googleSearch', new GoogleSearchTool())
-  );
+		vscode.lm.registerTool('googleSearch', new GoogleSearchTool())
+	);
 }
 
 export class GoogleSearchTool implements vscode.LanguageModelTool<void> {
 	invoke(options: vscode.LanguageModelToolInvocationOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.LanguageModelToolResult> {
-		return ;
+		return;
 	}
 	prepareInvocation?(options: vscode.LanguageModelToolInvocationPrepareOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.PreparedToolInvocation> {
-		return ;
+		return;
 	}
 }
 
@@ -124,42 +124,40 @@ export class SampleChatModelProvider implements vscode.LanguageModelChatProvider
 		const body = {
 			contents,
 			tools: [
-				{
-					"google_search": {}
-				}
+				...(hasGoogleSearchTool ? [{ "google_search": {} }] : [])
 			]
 		};
 
 		try {
-		const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.id}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify(body),
-			signal: controller.signal
-		});
+			const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.id}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(body),
+				signal: controller.signal
+			});
 
-		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
-		}
+			if (!response.ok) {
+				const errorText = await response.text();
+				throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+			}
 
-		const responseJson = await response.json() as GeminiResponse;
+			const responseJson = await response.json() as GeminiResponse;
 
-		if (responseJson.candidates && responseJson.candidates.length > 0) {
-			const candidate = responseJson.candidates[0];
-			if (candidate.content && candidate.content.parts) {
-				let responseText = '';
-				for (const part of candidate.content.parts) {
-					if (part.text) {
-						responseText += part.text;
+			if (responseJson.candidates && responseJson.candidates.length > 0) {
+				const candidate = responseJson.candidates[0];
+				if (candidate.content && candidate.content.parts) {
+					let responseText = '';
+					for (const part of candidate.content.parts) {
+						if (part.text) {
+							responseText += part.text;
+						}
 					}
-				}
-				progress.report(new vscode.LanguageModelTextPart(responseText));
-				// LanguageModelTextPart - Text content
-				// LanguageModelToolCallPart - Tool/function calls
-				// LanguageModelToolResultPart - Tool result content
+					progress.report(new vscode.LanguageModelTextPart(responseText));
+					// LanguageModelTextPart - Text content
+					// LanguageModelToolCallPart - Tool/function calls
+					// LanguageModelToolResultPart - Tool result content
 				}
 			}
 		} catch (error: any) {
