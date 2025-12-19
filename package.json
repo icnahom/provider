@@ -19,6 +19,17 @@
         "managementCommand": "provider.manage"
       }
     ],
+    "languageModelTools": [
+        {
+            "name": "googleSearch",
+            "displayName": "Google Search",
+            "modelDescription": "Enables Grounding with Google Search",
+            "userDescription": "Enables Grounding with Google Search",
+            "canBeReferencedInPrompt": true,
+            "toolReferenceName": "google",
+            "when": ""
+        }
+    ],
     "commands": [
       {
         "command": "provider.manage",

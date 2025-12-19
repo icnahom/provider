@@ -3,11 +3,10 @@
 import * as vscode from 'vscode';
 
 export function activate(context: vscode.ExtensionContext) {
-	const disposableProvider = vscode.lm.registerLanguageModelChatProvider('provider', new SampleChatModelProvider(context));
 
-	context.subscriptions.push(disposableProvider);
+	context.subscriptions.push(vscode.lm.registerLanguageModelChatProvider('provider', new SampleChatModelProvider(context)));
 
-	const disposableManage = vscode.commands.registerCommand('provider.manage', async () => {
+	context.subscriptions.push(vscode.commands.registerCommand('provider.manage', async () => {
 		const apiKey = await vscode.window.showInputBox({
 			prompt: 'Enter your API Key',
 			password: true,
@@ -15,8 +14,20 @@ export function activate(context: vscode.ExtensionContext) {
 		if (apiKey) {
 			await context.secrets.store('provider.apiKey', apiKey);
 		}
-	});
-	context.subscriptions.push(disposableManage);
+	}));
+
+	context.subscriptions.push(
+    vscode.lm.registerTool('googleSearch', new GoogleSearchTool())
+  );
+}
+
+export class GoogleSearchTool implements vscode.LanguageModelTool<void> {
+	invoke(options: vscode.LanguageModelToolInvocationOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.LanguageModelToolResult> {
+		return ;
+	}
+	prepareInvocation?(options: vscode.LanguageModelToolInvocationPrepareOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.PreparedToolInvocation> {
+		return ;
+	}
 }
 
 export function deactivate() { }
@@ -109,6 +120,7 @@ export class SampleChatModelProvider implements vscode.LanguageModelChatProvider
 
 		const contents = convertMessages(messages);
 
+		const hasGoogleSearchTool = options.tools?.some(tool => tool.name === 'googleSearch');
 		const body = {
 			contents,
 			tools: [
@@ -119,35 +131,35 @@ export class SampleChatModelProvider implements vscode.LanguageModelChatProvider
 		};
 
 		try {
-			const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.id}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify(body),
-				signal: controller.signal
-			});
+		const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.id}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(body),
+			signal: controller.signal
+		});
 
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
-			}
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+		}
 
-			const responseJson = await response.json() as GeminiResponse;
+		const responseJson = await response.json() as GeminiResponse;
 
-			if (responseJson.candidates && responseJson.candidates.length > 0) {
-				const candidate = responseJson.candidates[0];
-				if (candidate.content && candidate.content.parts) {
-					let responseText = '';
-					for (const part of candidate.content.parts) {
-						if (part.text) {
-							responseText += part.text;
-						}
+		if (responseJson.candidates && responseJson.candidates.length > 0) {
+			const candidate = responseJson.candidates[0];
+			if (candidate.content && candidate.content.parts) {
+				let responseText = '';
+				for (const part of candidate.content.parts) {
+					if (part.text) {
+						responseText += part.text;
 					}
-					progress.report(new vscode.LanguageModelTextPart(responseText));
-					// LanguageModelTextPart - Text content
-					// LanguageModelToolCallPart - Tool/function calls
-					// LanguageModelToolResultPart - Tool result content
+				}
+				progress.report(new vscode.LanguageModelTextPart(responseText));
+				// LanguageModelTextPart - Text content
+				// LanguageModelToolCallPart - Tool/function calls
+				// LanguageModelToolResultPart - Tool result content
 				}
 			}
 		} catch (error: any) {
