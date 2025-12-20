@@ -28,6 +28,15 @@
             "canBeReferencedInPrompt": true,
             "toolReferenceName": "google",
             "when": ""
+        },
+        {
+            "name": "urlContext",
+            "displayName": "URL Context",
+            "modelDescription": "Fetch content from a URL for additional context",
+            "userDescription": "Fetch content from a URL for additional context",
+            "canBeReferencedInPrompt": true,
+            "toolReferenceName": "urlContext",
+            "when": ""
         }
     ],
     "commands": [

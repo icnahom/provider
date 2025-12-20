@@ -19,9 +19,22 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.lm.registerTool('googleSearch', new GoogleSearchTool())
 	);
+
+	context.subscriptions.push(
+		vscode.lm.registerTool('urlContext', new UrlContextTool())
+	);
 }
 
 export class GoogleSearchTool implements vscode.LanguageModelTool<void> {
+	invoke(options: vscode.LanguageModelToolInvocationOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.LanguageModelToolResult> {
+		return;
+	}
+	prepareInvocation?(options: vscode.LanguageModelToolInvocationPrepareOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.PreparedToolInvocation> {
+		return;
+	}
+}
+
+export class UrlContextTool implements vscode.LanguageModelTool<void> {
 	invoke(options: vscode.LanguageModelToolInvocationOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.LanguageModelToolResult> {
 		return;
 	}
@@ -125,6 +138,7 @@ export class SampleChatModelProvider implements vscode.LanguageModelChatProvider
 			contents,
 			tools: [
 				...(hasGoogleSearchTool ? [{ "google_search": {} }] : [])
+				
 			]
 		};
 
