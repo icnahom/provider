@@ -15,32 +15,6 @@ export function activate(context: vscode.ExtensionContext) {
 			await context.secrets.store('provider.apiKey', apiKey);
 		}
 	}));
-
-	context.subscriptions.push(
-		vscode.lm.registerTool('googleSearch', new GoogleSearchTool())
-	);
-
-	context.subscriptions.push(
-		vscode.lm.registerTool('urlContext', new UrlContextTool())
-	);
-}
-
-export class GoogleSearchTool implements vscode.LanguageModelTool<void> {
-	invoke(options: vscode.LanguageModelToolInvocationOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.LanguageModelToolResult> {
-		return;
-	}
-	prepareInvocation?(options: vscode.LanguageModelToolInvocationPrepareOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.PreparedToolInvocation> {
-		return;
-	}
-}
-
-export class UrlContextTool implements vscode.LanguageModelTool<void> {
-	invoke(options: vscode.LanguageModelToolInvocationOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.LanguageModelToolResult> {
-		return;
-	}
-	prepareInvocation?(options: vscode.LanguageModelToolInvocationPrepareOptions<void>, token: vscode.CancellationToken): vscode.ProviderResult<vscode.PreparedToolInvocation> {
-		return;
-	}
 }
 
 export function deactivate() { }
@@ -133,11 +107,11 @@ export class SampleChatModelProvider implements vscode.LanguageModelChatProvider
 
 		const contents = convertMessages(messages);
 
-		const hasGoogleSearchTool = options.tools?.some(tool => tool.name === 'googleSearch');
 		const body = {
 			contents,
 			tools: [
-				...(hasGoogleSearchTool ? [{ "google_search": {} }] : [])
+				...(options.modelOptions?.google ? [{ "googleSearch": {} }] : []),
+				{ "urlContext": {} }
 				
 			]
 		};

@@ -19,26 +19,6 @@
         "managementCommand": "provider.manage"
       }
     ],
-    "languageModelTools": [
-      {
-        "name": "googleSearch",
-        "displayName": "Google Search",
-        "modelDescription": "Enables Grounding with Google Search",
-        "userDescription": "Enables Grounding with Google Search",
-        "canBeReferencedInPrompt": true,
-        "toolReferenceName": "google",
-        "when": ""
-      },
-      {
-        "name": "urlContext",
-        "displayName": "URL Context",
-        "modelDescription": "Fetch content from a URL for additional context",
-        "userDescription": "Fetch content from a URL for additional context",
-        "canBeReferencedInPrompt": true,
-        "toolReferenceName": "urlContext",
-        "when": ""
-      }
-    ],
     "commands": [
       {
         "command": "provider.manage",
