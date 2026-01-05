@@ -11,7 +11,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(vscode.lm.registerLanguageModelChatProvider('provider', provider));
 
-	context.subscriptions.push(vscode.chat.createChatParticipant('provider.google', chatRequestHandler));
+	context.subscriptions.push(vscode.chat.createChatParticipant('provider.chat', chatRequestHandler));
 
 	context.subscriptions.push(vscode.commands.registerCommand('provider.manage', async () => {
 		const apiKey = await vscode.window.showInputBox({
@@ -48,31 +48,36 @@ const chatRequestHandler: vscode.ChatRequestHandler = async (request: vscode.Cha
 		],
 		{
 			tools: [],
-			modelOptions: { google: true }
+			modelOptions: { google: request.command === 'google' ? true : false },
 		},
 		token,
 	);
+
 	for await (const part of response.stream) {
 		if (part instanceof vscode.LanguageModelTextPart) {
 			stream.markdown(part.value);
 		}
 	}
 
-	// const result = chatUtils.sendChatParticipantRequest(
-	// 	request,
-	// 	context,
-	// 	{
-	// 		// prompt: '',
-	// 		responseStreamOptions: {
-	// 			stream,
-	// 			references: true,
-	// 			responseText: true
-	// 		},
-	// 	},
-	// 	token
-	// );
+	/*
+	// @vscode/chat-extension-utils example usage:
+	const result = sendChatParticipantRequest(
+		request,
+		context,
+		{
+			tools: request.toolReferences.map(ref => vscode.lm.tools.find(tool => tool.name === ref.name)).filter(tool => tool !== undefined),
+			responseStreamOptions: {
+				stream,
+				references: true,
+				responseText: true
+			},
+		},
+		token
+	);
 
-	// await result.result;
+	await result.result;
+	*/
+
 };
 
 export class LanguageModelChatProvider implements vscode.LanguageModelChatProvider {
@@ -100,11 +105,12 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 		if (token.isCancellationRequested) {
 			return [];
 		}
+
 		if (!this._googleGenAi) {
 			await this.initialize();
 			if (!this._googleGenAi) {
-				if (!options.silent) { 
-					await vscode.commands.executeCommand('provider.manage'); 
+				if (!options.silent) {
+					await vscode.commands.executeCommand('provider.manage');
 				}
 				if (!this._googleGenAi) {
 					return [];
@@ -182,7 +188,7 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 							}
 						};
 					} else if (part instanceof vscode.LanguageModelDataPart) {
-						if (part.mimeType === 'stateful_marker') {
+						if (part.mimeType === 'thinking') {
 							return { text: new TextDecoder().decode(part.data), thought: true };
 						}
 					}
@@ -213,9 +219,9 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 		const config: GenerateContentConfig = {
 			abortSignal: controller.signal,
 			tools: tools,
-			// thinkingConfig: {
-			// 	includeThoughts: true,
-			// }
+			thinkingConfig: {
+				includeThoughts: false,
+			}
 		};
 
 		const result = await this._googleGenAi.models.generateContentStream({
@@ -235,7 +241,7 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 				if (candidate.content && candidate.content.parts) {
 					for (const part of candidate.content.parts) {
 						if (part.thought && part.text) {
-							progress.report(new vscode.LanguageModelDataPart(new TextEncoder().encode(part.text), 'stateful_marker'));
+							progress.report(new vscode.LanguageModelDataPart(new TextEncoder().encode(part.text), 'thinking'));
 						}
 						else if (part.text) {
 							progress.report(new vscode.LanguageModelTextPart(part.text!));

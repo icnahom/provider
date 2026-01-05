@@ -27,11 +27,17 @@
     ],
     "chatParticipants": [
       {
-        "id": "provider.google",
-        "name": "google",
-        "fullName": "Google Search",
+        "id": "provider.chat",
+        "name": "chat",
+        "fullName": "Chat",
         "description": "What can I help you with?",
-        "isSticky": true
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "google",
+            "description": "What can I help you with?"
+          }
+        ]
       }
     ]
   },
