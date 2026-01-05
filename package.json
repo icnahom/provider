@@ -12,6 +12,12 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "provider.manage",
+        "title": "Manage Provider API Key"
+      }
+    ],
     "languageModelChatProviders": [
       {
         "vendor": "provider",
@@ -19,10 +25,13 @@
         "managementCommand": "provider.manage"
       }
     ],
-    "commands": [
+    "chatParticipants": [
       {
-        "command": "provider.manage",
-        "title": "Manage Provider API Key"
+        "id": "provider.google",
+        "name": "google",
+        "fullName": "Google Search",
+        "description": "What can I help you with?",
+        "isSticky": true
       }
     ]
   },
@@ -35,14 +44,18 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.107.0",
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "typescript-eslint": "^8.48.1",
-    "eslint": "^9.39.1",
-    "typescript": "^5.9.3",
+    "@types/node": "^22.19.3",
+    "@types/vscode": "^1.107.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
-    "@google/genai": "^1.34.0"
+    "eslint": "^9.39.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.1"
+  },
+  "dependencies": {
+    "@google/genai": "^1.34.0",
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "@vscode/chat-extension-utils": "^0.0.0-alpha.5"
   }
 }

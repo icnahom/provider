@@ -1,158 +1,225 @@
+import type { ContentListUnion, GenerateContentConfig, GoogleGenAI, Tool } from '@google/genai' with { "resolution-mode": "import" };
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 
+
+
 export function activate(context: vscode.ExtensionContext) {
-
-	context.subscriptions.push(vscode.lm.registerLanguageModelChatProvider('provider', new SampleChatModelProvider(context)));
-
 	context.subscriptions.push(vscode.commands.registerCommand('provider.manage', async () => {
 		const apiKey = await vscode.window.showInputBox({
-			prompt: 'Enter your API Key',
+			prompt: 'Provider API Key',
 			password: true,
 		});
 		if (apiKey) {
 			await context.secrets.store('provider.apiKey', apiKey);
 		}
 	}));
+
+	context.subscriptions.push(vscode.chat.createChatParticipant('provider.google', chatRequestHandler));
+
+	context.subscriptions.push(vscode.lm.registerLanguageModelChatProvider('provider', new LanguageModelChatProvider(context)));
+
+
 }
 
 export function deactivate() { }
 
-interface GeminiResponse {
-	candidates: Array<{
-		content: {
-			parts: Array<{
-				text?: string;
-			}>;
-		};
-	}>;
-}
+const chatRequestHandler: vscode.ChatRequestHandler = async (request: vscode.ChatRequest, context: vscode.ChatContext, stream: vscode.ChatResponseStream, token: vscode.CancellationToken): Promise<void> => {
+	const response = await request.model.sendRequest(
+		[
+			...context.history.flatMap(history => {
+				if (history instanceof vscode.ChatRequestTurn) {
+					return vscode.LanguageModelChatMessage.User(history.prompt);
+				};
+				if (history instanceof vscode.ChatResponseTurn) {
+					return history.response.filter(part => part instanceof vscode.ChatResponseMarkdownPart)
+						.map(part => vscode.LanguageModelChatMessage.Assistant(part.value.value));
+				};
+				return null;
+			}).filter(message => message !== null),
+			vscode.LanguageModelChatMessage.User(request.prompt),
+		],
+		{
+			tools: [],
+			modelOptions: { google: true }
+		},
+		token,
+	);
+	for await (const part of response.stream) {
+		if (part instanceof vscode.LanguageModelTextPart) {
+			stream.markdown(part.value);
+		}
+	}
 
-export class SampleChatModelProvider implements vscode.LanguageModelChatProvider {
-	constructor(private readonly context: vscode.ExtensionContext) { }
+	// const result = chatUtils.sendChatParticipantRequest(
+	// 	request,
+	// 	context,
+	// 	{
+	// 		// prompt: '',
+	// 		responseStreamOptions: {
+	// 			stream,
+	// 			references: true,
+	// 			responseText: true
+	// 		},
+	// 	},
+	// 	token
+	// );
+
+	// await result.result;
+};
+
+export class LanguageModelChatProvider implements vscode.LanguageModelChatProvider {
+	private _googleGenAi: GoogleGenAI | undefined;
+
+	constructor(private readonly context: vscode.ExtensionContext) {
+		context.secrets.get('provider.apiKey').then(key => {
+			import('@google/genai').then(module => {
+				this._googleGenAi = new module.GoogleGenAI({ apiKey: key });
+			});
+		});
+	}
 
 	onDidChangeLanguageModelChatInformation?: vscode.Event<void> | undefined;
 
-	provideLanguageModelChatInformation(options: vscode.PrepareLanguageModelChatModelOptions, token: vscode.CancellationToken): vscode.ProviderResult<vscode.LanguageModelChatInformation[]> {
-		if (token.isCancellationRequested) {
+	async provideLanguageModelChatInformation(options: vscode.PrepareLanguageModelChatModelOptions, token: vscode.CancellationToken): Promise<vscode.LanguageModelChatInformation[]> {
+		if (token.isCancellationRequested || !this._googleGenAi) {
 			return [];
 		}
 
 		const controller = new AbortController();
 		token.onCancellationRequested(() => controller.abort());
 
-		return this.context.secrets.get('provider.apiKey').then(apiKey => {
-			if (!apiKey) {
-				return Promise.resolve([]);
-			}
+		const models = await this._googleGenAi.models.list({ config: { abortSignal: controller.signal } });
 
-			return fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}&pageSize=50`, {
-				signal: controller.signal
-			}).then(async (response) => {
-				if (!response.ok) {
-					throw new Error(`HTTP error! status: ${response.status}`);
-				}
-
-				const data = await response.json() as {
-					models: Array<{
-						name: string;
-						displayName?: string;
-						description?: string;
-						baseModelId: string;
-						version: string;
-						inputTokenLimit: number;
-						outputTokenLimit: number;
-					}>;
-				};
-
-				return data.models.map((model) => ({
-					id: model.name.split('/')[1],
-					name: model.displayName ?? model.baseModelId,
-					tooltip: model.description ?? '',
-					family: 'Gemini',
-					maxInputTokens: model.inputTokenLimit,
-					maxOutputTokens: model.outputTokenLimit,
-					version: model.version,
-					capabilities: {
-						toolCalling: true,
-						imageInput: true,
-					}
-				}));
-			}).catch((error: any) => {
-				if (!token.isCancellationRequested) {
-					vscode.window.showErrorMessage(`Failed to fetch models: ${error.message ?? String(error)}`);
-				}
+		const _models: vscode.LanguageModelChatInformation[] = [];
+		for await (const model of models) {
+			if (token.isCancellationRequested) {
 				return [];
+			}
+			_models.push({
+				id: model.name ?? '',
+				name: model.displayName ?? model.name ?? '',
+				family: model.name ?? '',
+				tooltip: model.description,
+				detail: model.name,
+				version: model.version ?? '',
+				maxInputTokens: model.inputTokenLimit ?? 0,
+				maxOutputTokens: model.outputTokenLimit ?? 0,
+				capabilities: {
+					toolCalling: true,
+					imageInput: true,
+				}
 			});
-		});
+		}
+		return _models;
 	}
 	async provideLanguageModelChatResponse(model: vscode.LanguageModelChatInformation, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken): Promise<void> {
-		const apiKey = await this.context.secrets.get('provider.apiKey');
-		if (!apiKey) {
+		if (token.isCancellationRequested || !this._googleGenAi) {
 			return;
 		}
 
 		const controller = new AbortController();
 		token.onCancellationRequested(() => controller.abort());
 
-		const convertMessages = (messages: readonly vscode.LanguageModelChatRequestMessage[]) => {
-			return messages.map(msg => ({
-				role: msg.role === vscode.LanguageModelChatMessageRole.User ? 'user' : 'model',
-				parts: msg.content
-					.filter((part): part is vscode.LanguageModelTextPart => part instanceof vscode.LanguageModelTextPart)
-					.map(part => ({ text: part.value }))
-			}));
+		const contents: ContentListUnion = messages.map(message => {
+			return {
+				role: message.role === vscode.LanguageModelChatMessageRole.User ? 'user' : 'model',
+				parts: message.content.map(part => {
+					if (part instanceof vscode.LanguageModelTextPart) {
+						return { text: part.value };
+					} else if (part instanceof vscode.LanguageModelToolCallPart) {
+						let callIdAsMetadata: { id?: string; name: string; thoughtSignature?: string } = JSON.parse(part.callId);
+						return {
+							functionCall: {
+								id: callIdAsMetadata.id,
+								name: part.name,
+								args: part.input as Record<string, unknown> || {}
+							},
+							thoughtSignature: callIdAsMetadata.thoughtSignature
+						};
+					} else if (part instanceof vscode.LanguageModelToolResultPart) {
+						let callIdAsMetadata: { id?: string; name: string; thoughtSignature?: string } = JSON.parse(part.callId);
+						return {
+							functionResponse: {
+								id: callIdAsMetadata.id,
+								name: callIdAsMetadata.name,
+								response: {
+									result: (part.content.find(p => p instanceof vscode.LanguageModelDataPart && p.mimeType === 'application/json') as any)?.toJSON().value,
+								}
+							}
+						};
+					}
+
+					// TODO: LanguageModelDataPart
+
+					return null;
+
+				}).filter(part => part !== null)
+			};
+		});
+
+		const tools: Tool[] = options.modelOptions?.google
+			? [{ googleSearch: {}, urlContext: {} }]
+			: [{
+				functionDeclarations: options.tools?.map(tool => {
+					return {
+						name: tool.name,
+						description: tool.description,
+						parametersJsonSchema: tool.inputSchema ?? {
+							type: "object",
+							properties: {},
+							required: []
+						}
+					};
+				}),
+			}];
+
+		const config: GenerateContentConfig = {
+			abortSignal: controller.signal,
+			tools: tools,
 		};
 
-		const contents = convertMessages(messages);
+		const result = await this._googleGenAi.models.generateContentStream({
+			model: model.id,
+			contents: contents,
+			config: config,
+		});
 
-		const body = {
-			contents,
-			tools: [
-				...(options.modelOptions?.google ? [{ "googleSearch": {} }] : []),
-				{ "urlContext": {} }
-				
-			]
-		};
-
-		try {
-			const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model.id}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify(body),
-				signal: controller.signal
-			});
-
-			if (!response.ok) {
-				const errorText = await response.text();
-				throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+		for await (const chunk of result) {
+			if (token.isCancellationRequested) {
+				break;
 			}
 
-			const responseJson = await response.json() as GeminiResponse;
+			if (chunk.candidates && chunk.candidates.length > 0) {
+				const candidate = chunk.candidates[0];
 
-			if (responseJson.candidates && responseJson.candidates.length > 0) {
-				const candidate = responseJson.candidates[0];
 				if (candidate.content && candidate.content.parts) {
-					let responseText = '';
 					for (const part of candidate.content.parts) {
 						if (part.text) {
-							responseText += part.text;
+							progress.report(new vscode.LanguageModelTextPart(part.text!));
+						}
+						if (part.functionCall) {
+							const callIdAsMetadata = JSON.stringify({
+								id: part.functionCall.id,
+								name: part.functionCall.name!,
+								thoughtSignature: part.thoughtSignature
+							});
+							progress.report(new vscode.LanguageModelToolCallPart(callIdAsMetadata, part.functionCall.name!, part.functionCall.args!));
+						}
+						if (part.functionResponse) {
+							const callIdAsMetadata = JSON.stringify({
+								id: part.functionResponse.id,
+								name: part.functionResponse.name!,
+							});
+							progress.report(new vscode.LanguageModelToolResultPart(callIdAsMetadata, [vscode.LanguageModelDataPart.json(part.functionResponse.response!)]));
 						}
 					}
-					progress.report(new vscode.LanguageModelTextPart(responseText));
-					// LanguageModelTextPart - Text content
-					// LanguageModelToolCallPart - Tool/function calls
-					// LanguageModelToolResultPart - Tool result content
 				}
 			}
-		} catch (error: any) {
-			if (!token.isCancellationRequested) {
-				vscode.window.showErrorMessage(`Failed to get response: ${error.message ?? String(error)}`);
-			}
 		}
+
+
 	}
 	provideTokenCount(model: vscode.LanguageModelChatInformation, text: string | vscode.LanguageModelChatRequestMessage, token: vscode.CancellationToken): Thenable<number> {
 		return Promise.resolve(42);
