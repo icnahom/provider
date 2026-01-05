@@ -59,25 +59,6 @@ const chatRequestHandler: vscode.ChatRequestHandler = async (request: vscode.Cha
 		}
 	}
 
-	/*
-	// @vscode/chat-extension-utils example usage:
-	const result = sendChatParticipantRequest(
-		request,
-		context,
-		{
-			tools: request.toolReferences.map(ref => vscode.lm.tools.find(tool => tool.name === ref.name)).filter(tool => tool !== undefined),
-			responseStreamOptions: {
-				stream,
-				references: true,
-				responseText: true
-			},
-		},
-		token
-	);
-
-	await result.result;
-	*/
-
 };
 
 export class LanguageModelChatProvider implements vscode.LanguageModelChatProvider {
