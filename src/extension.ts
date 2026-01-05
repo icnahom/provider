@@ -268,7 +268,35 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 
 
 	}
-	provideTokenCount(model: vscode.LanguageModelChatInformation, text: string | vscode.LanguageModelChatRequestMessage, token: vscode.CancellationToken): Thenable<number> {
-		return Promise.resolve(42);
+	async provideTokenCount(model: vscode.LanguageModelChatInformation, text: string | vscode.LanguageModelChatRequestMessage, token: vscode.CancellationToken): Promise<number> {
+		if (!this._googleGenAi) {
+			await this.initialize();
+			if (!this._googleGenAi) {
+				return 0;
+			}
+		}
+
+
+		const controller = new AbortController();
+		token.onCancellationRequested(() => controller.abort());
+
+		let contents: ContentListUnion;
+
+		if (typeof text === 'string') {
+			contents = [{ role: 'user', parts: [{ text }] }];
+		} else {
+			contents = [{
+				role: text.role === vscode.LanguageModelChatMessageRole.User ? 'user' : 'model',
+				parts: text.content.map(part => {
+					if (part instanceof vscode.LanguageModelTextPart) {
+						return { text: part.value };
+					}
+					return null;
+				}).filter(part => part !== null)
+			}];
+		}
+
+		const result = await this._googleGenAi.models.countTokens({ model: model.id, contents, config: { abortSignal: controller.signal } });
+		return result.totalTokens ?? 0;
 	}
 }
