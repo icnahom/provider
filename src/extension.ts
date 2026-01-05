@@ -5,7 +5,14 @@ import * as vscode from 'vscode';
 
 
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
+
+	const provider = new LanguageModelChatProvider(context);
+
+	context.subscriptions.push(vscode.lm.registerLanguageModelChatProvider('provider', provider));
+
+	context.subscriptions.push(vscode.chat.createChatParticipant('provider.google', chatRequestHandler));
+
 	context.subscriptions.push(vscode.commands.registerCommand('provider.manage', async () => {
 		const apiKey = await vscode.window.showInputBox({
 			prompt: 'Provider API Key',
@@ -13,12 +20,11 @@ export function activate(context: vscode.ExtensionContext) {
 		});
 		if (apiKey) {
 			await context.secrets.store('provider.apiKey', apiKey);
+		} else {
+			await context.secrets.delete('provider.apiKey');
 		}
+		await provider.initialize();
 	}));
-
-	context.subscriptions.push(vscode.chat.createChatParticipant('provider.google', chatRequestHandler));
-
-	context.subscriptions.push(vscode.lm.registerLanguageModelChatProvider('provider', new LanguageModelChatProvider(context)));
 
 
 }
@@ -73,18 +79,37 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 	private _googleGenAi: GoogleGenAI | undefined;
 
 	constructor(private readonly context: vscode.ExtensionContext) {
-		context.secrets.get('provider.apiKey').then(key => {
-			import('@google/genai').then(module => {
-				this._googleGenAi = new module.GoogleGenAI({ apiKey: key });
-			});
-		});
+		this.initialize();
+	}
+
+	async initialize() {
+		const apiKey = await this.context.secrets.get('provider.apiKey');
+		if (apiKey) {
+			const module = await import('@google/genai');
+			this._googleGenAi = new module.GoogleGenAI({ apiKey: apiKey });
+		}
+		else {
+			this._googleGenAi = undefined;
+		}
+
 	}
 
 	onDidChangeLanguageModelChatInformation?: vscode.Event<void> | undefined;
 
 	async provideLanguageModelChatInformation(options: vscode.PrepareLanguageModelChatModelOptions, token: vscode.CancellationToken): Promise<vscode.LanguageModelChatInformation[]> {
-		if (token.isCancellationRequested || !this._googleGenAi) {
+		if (token.isCancellationRequested) {
 			return [];
+		}
+		if (!this._googleGenAi) {
+			await this.initialize();
+			if (!this._googleGenAi) {
+				if (!options.silent) { 
+					await vscode.commands.executeCommand('provider.manage'); 
+				}
+				if (!this._googleGenAi) {
+					return [];
+				}
+			}
 		}
 
 		const controller = new AbortController();
@@ -115,8 +140,14 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 		return _models;
 	}
 	async provideLanguageModelChatResponse(model: vscode.LanguageModelChatInformation, messages: readonly vscode.LanguageModelChatRequestMessage[], options: vscode.ProvideLanguageModelChatResponseOptions, progress: vscode.Progress<vscode.LanguageModelResponsePart>, token: vscode.CancellationToken): Promise<void> {
-		if (token.isCancellationRequested || !this._googleGenAi) {
+		if (token.isCancellationRequested) {
 			return;
+		}
+		if (!this._googleGenAi) {
+			await this.initialize();
+			if (!this._googleGenAi) {
+				return;
+			}
 		}
 
 		const controller = new AbortController();
@@ -140,18 +171,22 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 						};
 					} else if (part instanceof vscode.LanguageModelToolResultPart) {
 						let callIdAsMetadata: { id?: string; name: string; thoughtSignature?: string } = JSON.parse(part.callId);
+						const result = (part.content.find(p => p instanceof vscode.LanguageModelTextPart))?.value;
 						return {
 							functionResponse: {
 								id: callIdAsMetadata.id,
 								name: callIdAsMetadata.name,
 								response: {
-									result: (part.content.find(p => p instanceof vscode.LanguageModelDataPart && p.mimeType === 'application/json') as any)?.toJSON().value,
+									result: result
 								}
 							}
 						};
+					} else if (part instanceof vscode.LanguageModelDataPart) {
+						if (part.mimeType === 'stateful_marker') {
+							return { text: new TextDecoder().decode(part.data), thought: true };
+						}
 					}
 
-					// TODO: LanguageModelDataPart
 
 					return null;
 
@@ -178,6 +213,9 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 		const config: GenerateContentConfig = {
 			abortSignal: controller.signal,
 			tools: tools,
+			// thinkingConfig: {
+			// 	includeThoughts: true,
+			// }
 		};
 
 		const result = await this._googleGenAi.models.generateContentStream({
@@ -196,10 +234,13 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 
 				if (candidate.content && candidate.content.parts) {
 					for (const part of candidate.content.parts) {
-						if (part.text) {
+						if (part.thought && part.text) {
+							progress.report(new vscode.LanguageModelDataPart(new TextEncoder().encode(part.text), 'stateful_marker'));
+						}
+						else if (part.text) {
 							progress.report(new vscode.LanguageModelTextPart(part.text!));
 						}
-						if (part.functionCall) {
+						else if (part.functionCall) {
 							const callIdAsMetadata = JSON.stringify({
 								id: part.functionCall.id,
 								name: part.functionCall.name!,
@@ -207,7 +248,7 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 							});
 							progress.report(new vscode.LanguageModelToolCallPart(callIdAsMetadata, part.functionCall.name!, part.functionCall.args!));
 						}
-						if (part.functionResponse) {
+						else if (part.functionResponse) {
 							const callIdAsMetadata = JSON.stringify({
 								id: part.functionResponse.id,
 								name: part.functionResponse.name!,
