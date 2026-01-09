@@ -4,7 +4,6 @@ import type { ContentListUnion, GenerateContentConfig, GoogleGenAI, Tool } from 
 import * as vscode from 'vscode';
 
 
-
 export async function activate(context: vscode.ExtensionContext) {
 
 	const provider = new LanguageModelChatProvider(context);
@@ -30,36 +29,6 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() { }
-
-const chatRequestHandler: vscode.ChatRequestHandler = async (request: vscode.ChatRequest, context: vscode.ChatContext, stream: vscode.ChatResponseStream, token: vscode.CancellationToken): Promise<void> => {
-	const response = await request.model.sendRequest(
-		[
-			...context.history.flatMap(history => {
-				if (history instanceof vscode.ChatRequestTurn) {
-					return vscode.LanguageModelChatMessage.User(history.prompt);
-				};
-				if (history instanceof vscode.ChatResponseTurn) {
-					return history.response.filter(part => part instanceof vscode.ChatResponseMarkdownPart)
-						.map(part => vscode.LanguageModelChatMessage.Assistant(part.value.value));
-				};
-				return null;
-			}).filter(message => message !== null),
-			vscode.LanguageModelChatMessage.User(request.prompt),
-		],
-		{
-			tools: [],
-			modelOptions: { google: request.command === 'google' ? true : false },
-		},
-		token,
-	);
-
-	for await (const part of response.stream) {
-		if (part instanceof vscode.LanguageModelTextPart) {
-			stream.markdown(part.value);
-		}
-	}
-
-};
 
 export class LanguageModelChatProvider implements vscode.LanguageModelChatProvider {
 	private _googleGenAi: GoogleGenAI | undefined;
@@ -174,7 +143,6 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 						}
 					}
 
-
 					return null;
 
 				}).filter(part => part !== null)
@@ -246,9 +214,8 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 				}
 			}
 		}
-
-
 	}
+
 	async provideTokenCount(model: vscode.LanguageModelChatInformation, text: string | vscode.LanguageModelChatRequestMessage, token: vscode.CancellationToken): Promise<number> {
 		if (!this._googleGenAi) {
 			await this.initialize();
@@ -281,3 +248,33 @@ export class LanguageModelChatProvider implements vscode.LanguageModelChatProvid
 		return result.totalTokens ?? 0;
 	}
 }
+
+const chatRequestHandler: vscode.ChatRequestHandler = async (request: vscode.ChatRequest, context: vscode.ChatContext, stream: vscode.ChatResponseStream, token: vscode.CancellationToken): Promise<void> => {
+	const response = await request.model.sendRequest(
+		[
+			...context.history.flatMap(history => {
+				if (history instanceof vscode.ChatRequestTurn) {
+					return vscode.LanguageModelChatMessage.User(history.prompt);
+				};
+				if (history instanceof vscode.ChatResponseTurn) {
+					return history.response.filter(part => part instanceof vscode.ChatResponseMarkdownPart)
+						.map(part => vscode.LanguageModelChatMessage.Assistant(part.value.value));
+				};
+				return null;
+			}).filter(message => message !== null),
+			vscode.LanguageModelChatMessage.User(request.prompt),
+		],
+		{
+			tools: [],
+			modelOptions: { google: request.command === 'google' ? true : false },
+		},
+		token,
+	);
+
+	for await (const part of response.stream) {
+		if (part instanceof vscode.LanguageModelTextPart) {
+			stream.markdown(part.value);
+		}
+	}
+
+};

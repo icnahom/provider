@@ -1,3 +1,11 @@
+## ⚠️ Known Limitations
+
+- **Image Support:** Currently supports text-only interactions.
+- **Thinking Display:** The reasoning process is currently hidden from the UI.
+- **Mid-Conversation Provider Switching:** Once a chat session begins, you cannot switch providers.
+- **Chat Participant Robustness:** The implementation lacks basic features like reading from file.
+- **Tool Token Tracking:** Tool Definition is not currently appplied to the total token count.
+
 <!-- # provider README
 
 After writing up a brief description, we recommend including the following sections.
